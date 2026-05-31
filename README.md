@@ -1,10 +1,28 @@
-﻿# Echo
+# Echo
 
-Echo is a private offline-capable Android music player scaffolded from the BRD. It uses Kotlin, Jetpack Compose, MVI, Firebase-ready repositories, Media3, Room, DataStore, WorkManager, and Hilt.
+Echo is a private Android-only offline-capable music player for a small group of users. It uses Kotlin, Jetpack Compose, Hilt, Firestore, Room, DataStore, WorkManager, and Media3.
 
-## Current state
+## Current State
 
-This is an architecture-first implementation with working navigation, dark UI, MVI screen contracts, local sample data, and integration shells for Firebase uploads/downloads and Media3 playback. Add `google-services.json` and tighten Firebase rules before using a real shared library.
+The app reads shared song metadata from the Firestore `songs` collection and uses public GitHub Release asset URLs in `audioUrl` for streaming and downloads. Downloaded songs, favorites, progress, and local file paths stay on-device only.
+
+MP3 upload from the app is intentionally not supported. MP3 files are uploaded manually to GitHub Releases, and song metadata is added or managed separately in Firestore.
+
+## Firestore Song Schema
+
+```json
+{
+  "title": "",
+  "artist": "",
+  "album": "",
+  "durationMs": 0,
+  "audioUrl": "",
+  "fileName": "",
+  "sizeBytes": 0,
+  "updatedAt": "",
+  "fileHash": ""
+}
+```
 
 ## Build
 

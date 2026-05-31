@@ -14,33 +14,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Storage
@@ -61,6 +53,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,9 +69,12 @@ import androidx.compose.ui.unit.dp
 import com.echo.musicplayer.core.util.formatBytes
 import com.echo.musicplayer.core.util.formatDuration
 import com.echo.musicplayer.domain.model.DownloadStatus
+import com.echo.musicplayer.domain.model.LibraryStatus
 import com.echo.musicplayer.domain.model.Song
+import com.echo.musicplayer.domain.model.ThemeMode
 import com.echo.musicplayer.ui.app.EchoAppUiState
 import com.echo.musicplayer.ui.components.Artwork
+import com.echo.musicplayer.ui.components.EmptyState
 import com.echo.musicplayer.ui.components.ScreenHeader
 import com.echo.musicplayer.ui.components.SectionCard
 import com.echo.musicplayer.ui.components.SongRow
@@ -86,36 +85,49 @@ fun LibraryScreen(
     state: EchoAppUiState,
     contentPadding: PaddingValues,
     onSearch: () -> Unit,
-    onUpload: () -> Unit,
     onSongClick: (Song) -> Unit,
     onMore: (Song) -> Unit,
-    onNowPlaying: () -> Unit,
-    onTogglePlayback: () -> Unit,
 ) {
-    MusicListScreen(
-        title = "Library",
-        songs = state.songs,
-        contentPadding = contentPadding,
-        actions = {
-            IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, contentDescription = null) }
-            IconButton(onClick = onUpload) { Icon(Icons.Filled.Add, contentDescription = null) }
-            IconButton(onClick = {}) { Icon(Icons.Filled.MoreVert, contentDescription = null) }
-        },
-        header = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Filled.Shuffle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Shuffle Play", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(contentPadding),
+        contentPadding = PaddingValues(bottom = 12.dp),
+    ) {
+        item {
+            ScreenHeader(
+                title = "Library",
+                actions = { IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, contentDescription = null) } },
+            )
+            LibraryStatusBanner(state.libraryStatus, state.songs.isNotEmpty())
+        }
+        if (state.songs.isEmpty()) {
+            item {
+                EmptyState(
+                    icon = Icons.Filled.MusicNote,
+                    title = when (state.libraryStatus) {
+                        LibraryStatus.CheckingFirestore -> "Checking Firestore"
+                        LibraryStatus.Empty -> "No songs found in Firestore"
+                        LibraryStatus.Failed -> "Could not reach Firestore"
+                        else -> "No songs yet"
+                    },
+                    body = when (state.libraryStatus) {
+                        LibraryStatus.CheckingFirestore -> "Your shared library is being synced."
+                        LibraryStatus.Empty -> "Add song metadata to Firestore to populate your private library."
+                        LibraryStatus.Failed -> "Check your connection or Firestore configuration, then try again."
+                        else -> "Add song metadata to Firestore to populate your private library."
+                    },
+                )
             }
-        },
-        onSongClick = onSongClick,
-        onMore = onMore,
-    )
+        } else {
+            items(state.songs, key = { it.id }) { song ->
+                SongRow(
+                    song = song,
+                    onClick = { onSongClick(song) },
+                    onMoreClick = { onMore(song) },
+                    trailingMode = SongTrailingMode.Duration,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -125,9 +137,14 @@ fun DownloadsScreen(
     onSearch: () -> Unit,
     onDownload: (Song) -> Unit,
     onDownloadAll: () -> Unit,
-    onNowPlaying: () -> Unit,
-    onTogglePlayback: () -> Unit,
 ) {
+    var selectedFilter by remember { mutableStateOf(DownloadFilter.All) }
+    val visibleSongs = when (selectedFilter) {
+        DownloadFilter.All -> state.songs
+        DownloadFilter.Downloaded -> state.downloaded
+        DownloadFilter.Downloading -> state.downloading
+        DownloadFilter.Failed -> state.failedDownloads
+    }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -139,18 +156,17 @@ fun DownloadsScreen(
                 title = "Downloads",
                 actions = {
                     IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, contentDescription = null) }
-                    IconButton(onClick = {}) { Icon(Icons.Filled.MoreVert, contentDescription = null) }
                 },
             )
             SectionCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Column(Modifier.padding(14.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Storage Used", style = MaterialTheme.typography.labelMedium)
-                        Text("12.45 GB / 50 GB", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(formatBytes(state.storageUsage.downloadedBytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(8.dp))
                     LinearProgressIndicator(
-                        progress = { 0.25f },
+                        progress = { if (state.totalLibraryBytes == 0L) 0f else (state.storageUsage.downloadedBytes.toFloat() / state.totalLibraryBytes).coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -158,34 +174,57 @@ fun DownloadsScreen(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Text("All", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                Text("Downloaded", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
-                Text("Downloading", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                DownloadFilter.entries.forEach { filter ->
+                    val count = when (filter) {
+                        DownloadFilter.All -> state.songs.size
+                        DownloadFilter.Downloaded -> state.downloaded.size
+                        DownloadFilter.Downloading -> state.downloading.size
+                        DownloadFilter.Failed -> state.failedDownloads.size
+                    }
+                    Text(
+                        text = "${filter.label} ($count)",
+                        modifier = Modifier.clickable { selectedFilter = filter },
+                        color = if (selectedFilter == filter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
             }
         }
-        items(state.songs, key = { it.id }) { song ->
-            SongRow(
-                song = song,
-                onClick = { onDownload(song) },
-                trailingMode = SongTrailingMode.Download,
-            )
-        }
-        item {
-            Button(
-                onClick = onDownloadAll,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                Text("Download All")
+        if (visibleSongs.isEmpty()) {
+            item {
+                EmptyState(
+                    icon = Icons.Filled.Download,
+                    title = "Nothing to download",
+                    body = "Songs from your library will appear here with their current download status.",
+                )
             }
-            Text(
-                text = "${state.downloaded.size} songs downloaded",
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.labelSmall,
-            )
+        } else {
+            items(visibleSongs, key = { it.id }) { song ->
+                SongRow(
+                    song = song,
+                    onClick = { onDownload(song) },
+                    trailingMode = SongTrailingMode.Download,
+                )
+            }
+        }
+        if (state.songs.isNotEmpty()) {
+            item {
+                Button(
+                    onClick = onDownloadAll,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text("Download All")
+                }
+                Text(
+                    text = "${state.downloaded.size} downloaded, ${state.downloading.size} downloading, ${state.failedDownloads.size} failed",
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
     }
 }
@@ -197,8 +236,6 @@ fun FavoritesScreen(
     onSearch: () -> Unit,
     onSongClick: (Song) -> Unit,
     onFavorite: (Song) -> Unit,
-    onNowPlaying: () -> Unit,
-    onTogglePlayback: () -> Unit,
 ) {
     MusicListScreen(
         title = "Favorites",
@@ -206,15 +243,10 @@ fun FavoritesScreen(
         contentPadding = contentPadding,
         actions = {
             IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, contentDescription = null) }
-            IconButton(onClick = {}) { Icon(Icons.Filled.MoreVert, contentDescription = null) }
         },
-        header = {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Shuffle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Shuffle Play", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            }
-        },
+        emptyTitle = "No favorites yet",
+        emptyBody = "Tap the heart on songs you love and they will collect here.",
+        emptyIcon = Icons.Filled.FavoriteBorder,
         onSongClick = onSongClick,
         trailingMode = SongTrailingMode.Favorite,
         onFavorite = onFavorite,
@@ -226,7 +258,7 @@ fun SettingsScreen(
     state: EchoAppUiState,
     contentPadding: PaddingValues,
     onColor: (Long) -> Unit,
-    onWifi: (Boolean) -> Unit,
+    onThemeMode: (ThemeMode) -> Unit,
     onKeepScreen: (Boolean) -> Unit,
     onStorage: () -> Unit,
     onAbout: () -> Unit,
@@ -239,7 +271,7 @@ fun SettingsScreen(
         item { ScreenHeader(title = "Settings") }
         item {
             Text("General", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium)
-            SettingSwitch("Download over Wi-Fi only", state.settings.downloadOverWifiOnly, onWifi)
+            ThemeModeRow(state.settings.themeMode, onThemeMode)
             SettingSwitch("Keep screen on while playing", state.settings.keepScreenOnWhilePlaying, onKeepScreen)
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Primary color", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
@@ -249,15 +281,13 @@ fun SettingsScreen(
                             .padding(start = 8.dp)
                             .size(28.dp)
                             .clip(CircleShape)
-                            .background(Color(color))
+                            .background(Color(color.toInt()))
                             .clickable { onColor(color) },
                     )
                 }
             }
             Text("Storage", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium)
-            SettingRow("Storage used", "12.45 GB", Icons.Filled.Storage, onStorage)
-            SettingRow("Clear downloaded songs", "", Icons.Filled.Delete) {}
-            SettingRow("Clear cache", "256 MB", Icons.Filled.Clear) {}
+            SettingRow("Storage used", formatBytes(state.storageUsage.downloadedBytes), Icons.Filled.Storage, onStorage)
             Text("About", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium)
             SettingRow("App version", "1.0.0", Icons.Filled.Info, onAbout)
         }
@@ -271,7 +301,7 @@ fun SearchScreen(
     onQuery: (String) -> Unit,
     onSongClick: (Song) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
             OutlinedTextField(
@@ -288,8 +318,22 @@ fun SearchScreen(
             )
         }
         LazyColumn {
-            items(state.songs, key = { it.id }) { song ->
-                SongRow(song = song, onClick = { onSongClick(song) })
+            if (state.songs.isEmpty()) {
+                item {
+                    EmptyState(
+                        icon = Icons.Filled.Search,
+                        title = if (state.searchQuery.isBlank()) "Search your library" else "No matching songs",
+                        body = if (state.searchQuery.isBlank()) {
+                            "Search by title, artist, or album."
+                        } else {
+                            "Try a different title, artist, or album."
+                        },
+                    )
+                }
+            } else {
+                items(state.songs, key = { it.id }) { song ->
+                    SongRow(song = song, onClick = { onSongClick(song) })
+                }
             }
         }
     }
@@ -307,18 +351,17 @@ fun NowPlayingScreen(
     onDownload: () -> Unit,
     onQueue: () -> Unit,
 ) {
-    val song = state.playback.currentSong ?: state.songs.firstOrNull()
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    val song = state.playback.currentSong
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         ScreenHeader(
             title = "Now Playing",
             leading = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) } },
-            actions = { IconButton(onClick = {}) { Icon(Icons.Filled.MoreVert, contentDescription = null) } },
         )
         if (song != null) {
             Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Artwork(song = song, modifier = Modifier.fillMaxWidth().height(300.dp))
                 Spacer(Modifier.height(24.dp))
-                Text(song.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(song.title, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(song.artist, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(24.dp))
                 Slider(
@@ -332,7 +375,6 @@ fun NowPlayingScreen(
                 }
                 Spacer(Modifier.height(18.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = {}) { Icon(Icons.Filled.Shuffle, contentDescription = null) }
                     IconButton(onClick = onPrevious) { Icon(Icons.Filled.SkipPrevious, contentDescription = null, modifier = Modifier.size(30.dp)) }
                     IconButton(
                         onClick = onToggle,
@@ -341,7 +383,6 @@ fun NowPlayingScreen(
                         Icon(if (state.playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(34.dp), tint = MaterialTheme.colorScheme.onPrimary)
                     }
                     IconButton(onClick = onNext) { Icon(Icons.Filled.SkipNext, contentDescription = null, modifier = Modifier.size(30.dp)) }
-                    IconButton(onClick = {}) { Icon(Icons.Filled.Menu, contentDescription = null) }
                 }
                 Spacer(Modifier.height(24.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -350,47 +391,12 @@ fun NowPlayingScreen(
                     NowPlayingAction(Icons.Filled.QueueMusic, "Queue", onQueue)
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun UploadScreen(
-    state: EchoAppUiState,
-    onBack: () -> Unit,
-    onUpload: () -> Unit,
-) {
-    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        item {
-            ScreenHeader(
-                title = "Upload Song",
-                leading = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) } },
+        } else {
+            EmptyState(
+                icon = Icons.Filled.MusicNote,
+                title = "Nothing playing",
+                body = "Pick a song from the library to start listening.",
             )
-            SectionCard(Modifier.padding(16.dp)) {
-                Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
-                    Spacer(Modifier.height(12.dp))
-                    Text("Tap to select MP3 file", fontWeight = FontWeight.SemiBold)
-                    Text("or drag and drop here", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            SectionCard(Modifier.padding(horizontal = 16.dp)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    MetadataLine("File name", "Believer.mp3")
-                    MetadataLine("Size", "5.00 MB")
-                    MetadataLine("Duration", "3:24")
-                    MetadataLine("Title", "Believer")
-                    MetadataLine("Artist", "Imagine Dragons")
-                    MetadataLine("Album", "Evolve")
-                }
-            }
-            Button(
-                onClick = onUpload,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                Text(if (state.uploadProgress in 0.01f..0.99f) "Uploading ${(state.uploadProgress * 100).toInt()}%" else "Upload")
-            }
         }
     }
 }
@@ -405,7 +411,7 @@ fun QueueScreen(
 ) {
     val current = state.playback.currentSong
     val upcoming = state.playback.queue.filterNot { it.id == current?.id }
-    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         item {
             ScreenHeader(
                 title = "Queue",
@@ -413,11 +419,19 @@ fun QueueScreen(
                 actions = { TextButton(onClick = onClear) { Text("Clear") } },
             )
             Text("Now Playing", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
-            current?.let { SongRow(song = it, onClick = { onPlay(it) }, trailingMode = SongTrailingMode.Download) }
+            if (current == null) {
+                EmptyState(
+                    icon = Icons.Filled.QueueMusic,
+                    title = "Queue is empty",
+                    body = "Start playback from the library to build a queue.",
+                )
+            } else {
+                SongRow(song = current, onClick = { onPlay(current) }, trailingMode = SongTrailingMode.Download)
+            }
             Text("Up Next", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
         }
         items(upcoming, key = { it.id }) { song ->
-            SongRow(song = song, onClick = { onPlay(song) }, onMoreClick = { onRemove(song) })
+            SongRow(song = song, onClick = { onPlay(song) }, onMoreClick = { onRemove(song) }, actionIcon = Icons.Filled.Clear)
         }
     }
 }
@@ -431,7 +445,7 @@ fun SongOptionsScreen(
     onDownload: () -> Unit,
     onDeleteDownload: () -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(16.dp), verticalArrangement = Arrangement.Center) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().padding(16.dp), verticalArrangement = Arrangement.Center) {
         Card(
             shape = RoundedCornerShape(8.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -443,19 +457,18 @@ fun SongOptionsScreen(
                         Artwork(song, Modifier.size(56.dp))
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text(song.title, fontWeight = FontWeight.Bold)
+                            Text(song.title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                             Text(song.artist, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(formatDuration(song.durationMs), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
-                OptionRow(Icons.Filled.PlaylistAdd, "Play Next", onPlayNext)
-                OptionRow(Icons.Filled.Add, "Add to Queue", onPlayNext)
-                OptionRow(Icons.Filled.Favorite, "Add to Favorites", onFavorite)
+                OptionRow(Icons.Filled.PlayArrow, "Play Now", onPlayNext)
+                OptionRow(Icons.Filled.Favorite, if (song?.isFavorite == true) "Remove from Favorites" else "Add to Favorites", onFavorite)
                 OptionRow(Icons.Filled.Download, "Download", onDownload)
-                OptionRow(Icons.Filled.Edit, "Edit Song Info", onClick = {})
-                OptionRow(Icons.Filled.Share, "Share", onClick = {})
-                OptionRow(Icons.Filled.Delete, "Delete from Library", onDeleteDownload, isDanger = true)
+                if (song?.downloadStatus == DownloadStatus.Downloaded) {
+                    OptionRow(Icons.Filled.Delete, "Remove Download", onDeleteDownload, isDanger = true)
+                }
                 OptionRow(Icons.Filled.Clear, "Cancel", onBack)
             }
         }
@@ -468,7 +481,7 @@ fun DownloadAllScreen(
     onBack: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         item {
             ScreenHeader(
                 title = "Download All",
@@ -483,19 +496,23 @@ fun DownloadAllScreen(
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${(state.downloadAllProgress * 100).toInt()}%", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                    Text("23.6 MB / 32.6 MB", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                    Text("${(state.downloadAllProgress * 100).toInt()}%", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                    Text("${formatBytes(state.storageUsage.downloadedBytes)} / ${formatBytes(state.totalLibraryBytes)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
                 }
             }
             Text(
-                text = "Downloading ${state.downloaded.size} of ${state.songs.size} songs",
+                text = if (state.batchDownloadIds.isEmpty()) {
+                    "No active batch download"
+                } else {
+                    "Downloading ${state.batchCompletedCount} of ${state.batchDownloadIds.size} songs; ${state.batchFailedCount} failed"
+                },
                 modifier = Modifier.fillMaxWidth().padding(18.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
         }
-        items(state.songs.take(4), key = { it.id }) { song ->
-            SongRow(song = song, onClick = {}, trailingMode = SongTrailingMode.Download)
+        items(state.batchSongs.ifEmpty { state.downloading }.take(8), key = { it.id }) { song ->
+            SongRow(song = song, trailingMode = SongTrailingMode.Download)
         }
         item {
             OutlinedButton(
@@ -516,7 +533,7 @@ fun StorageScreen(
     onClearDownloads: () -> Unit,
     onClearCache: () -> Unit,
 ) {
-    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         item {
             ScreenHeader(
                 title = "Storage & Data",
@@ -525,11 +542,14 @@ fun StorageScreen(
             SectionCard(Modifier.padding(16.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Storage Used", fontWeight = FontWeight.SemiBold)
-                        Text("12.45 GB / 50 GB", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Storage Used", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        Text(formatBytes(state.storageUsage.totalBytes), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(8.dp))
-                    LinearProgressIndicator(progress = { 0.25f }, modifier = Modifier.fillMaxWidth())
+                    LinearProgressIndicator(
+                        progress = { if (state.totalLibraryBytes == 0L) 0f else (state.storageUsage.downloadedBytes.toFloat() / state.totalLibraryBytes).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     StorageLegend("Downloaded Songs", formatBytes(state.storageUsage.downloadedBytes), MaterialTheme.colorScheme.primary)
                     StorageLegend("Cache", formatBytes(state.storageUsage.cacheBytes), Color(0xFFE8C766))
                     StorageLegend("Other Data", formatBytes(state.storageUsage.otherBytes), Color(0xFF5AA9FF))
@@ -538,7 +558,7 @@ fun StorageScreen(
             SectionCard(Modifier.padding(horizontal = 16.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     MetadataLine("Total songs", "${state.songs.size}")
-                    MetadataLine("Total size", "10.12 GB")
+                    MetadataLine("Total size", formatBytes(state.totalLibraryBytes))
                     Button(onClick = onClearDownloads, modifier = Modifier.fillMaxWidth().padding(top = 12.dp), shape = RoundedCornerShape(8.dp)) {
                         Text("Clear Downloaded Songs")
                     }
@@ -558,7 +578,7 @@ fun StorageScreen(
 
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         ScreenHeader(
             title = "About",
             leading = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) } },
@@ -568,15 +588,14 @@ fun AboutScreen(onBack: () -> Unit) {
                 Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
             }
             Spacer(Modifier.height(14.dp))
-            Text("Offline Music Player", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Offline Music Player", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("Version 1.0.0", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SectionCard(Modifier.padding(16.dp)) {
-            Column {
-                OptionRow(Icons.Filled.Info, "What's new", onClick = {})
-                OptionRow(Icons.Filled.Info, "Privacy Policy", onClick = {})
-                OptionRow(Icons.Filled.Info, "Terms of Use", onClick = {})
-                OptionRow(Icons.Filled.Info, "Open Source Licenses", onClick = {})
+            Column(Modifier.padding(16.dp)) {
+                Text("Private, offline-capable music playback for a small shared library.", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(10.dp))
+                Text("Open-source licenses and policy screens will be added when external production integrations are finalized.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
         Text(
@@ -589,13 +608,41 @@ fun AboutScreen(onBack: () -> Unit) {
     }
 }
 
+private enum class DownloadFilter(val label: String) { All("All"), Downloaded("Downloaded"), Downloading("Downloading"), Failed("Failed") }
+
+@Composable
+private fun LibraryStatusBanner(status: LibraryStatus, hasCachedSongs: Boolean) {
+    val message = when (status) {
+        LibraryStatus.CheckingFirestore -> "Checking Firestore..."
+        LibraryStatus.Synced -> "Library synced"
+        LibraryStatus.Empty -> "No songs found in Firestore"
+        LibraryStatus.OfflineUsingCache -> "Could not reach Firestore, showing saved songs"
+        LibraryStatus.Failed -> "Could not reach Firestore"
+        LibraryStatus.Idle -> null
+    }
+    if (message != null && (status != LibraryStatus.Synced || hasCachedSongs)) {
+        Text(
+            text = message,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            color = when (status) {
+                LibraryStatus.Failed -> MaterialTheme.colorScheme.error
+                LibraryStatus.OfflineUsingCache -> MaterialTheme.colorScheme.secondary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
 @Composable
 private fun MusicListScreen(
     title: String,
     songs: List<Song>,
     contentPadding: PaddingValues,
     actions: @Composable () -> Unit,
-    header: @Composable () -> Unit,
+    emptyTitle: String,
+    emptyBody: String,
+    emptyIcon: ImageVector,
     onSongClick: (Song) -> Unit,
     onMore: ((Song) -> Unit)? = null,
     trailingMode: SongTrailingMode = SongTrailingMode.Duration,
@@ -607,16 +654,21 @@ private fun MusicListScreen(
     ) {
         item {
             ScreenHeader(title = title, actions = actions)
-            header()
         }
-        items(songs, key = { it.id }) { song ->
-            SongRow(
-                song = song,
-                onClick = { onSongClick(song) },
-                onFavoriteClick = { onFavorite?.invoke(song) },
-                onMoreClick = onMore?.let { { it(song) } },
-                trailingMode = trailingMode,
-            )
+        if (songs.isEmpty()) {
+            item {
+                EmptyState(icon = emptyIcon, title = emptyTitle, body = emptyBody)
+            }
+        } else {
+            items(songs, key = { it.id }) { song ->
+                SongRow(
+                    song = song,
+                    onClick = { onSongClick(song) },
+                    onFavoriteClick = { onFavorite?.invoke(song) },
+                    onMoreClick = onMore?.let { { it(song) } },
+                    trailingMode = trailingMode,
+                )
+            }
         }
     }
 }
@@ -626,6 +678,27 @@ private fun SettingSwitch(label: String, checked: Boolean, onChecked: (Boolean) 
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         Switch(checked = checked, onCheckedChange = onChecked)
+    }
+}
+
+@Composable
+private fun ThemeModeRow(selected: ThemeMode, onSelected: (ThemeMode) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("Theme", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ThemeMode.entries.forEach { mode ->
+                if (mode == selected) {
+                    Button(onClick = { onSelected(mode) }, shape = RoundedCornerShape(8.dp)) {
+                        Text(mode.name)
+                    }
+                } else {
+                    OutlinedButton(onClick = { onSelected(mode) }, shape = RoundedCornerShape(8.dp)) {
+                        Text(mode.name)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -646,7 +719,7 @@ private fun SettingRow(label: String, value: String, icon: ImageVector, onClick:
 private fun MetadataLine(label: String, value: String) {
     Column {
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+        Text(value, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

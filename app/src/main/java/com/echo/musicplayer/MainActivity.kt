@@ -4,8 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.echo.musicplayer.ui.navigation.EchoNavGraph
 import com.echo.musicplayer.ui.settings.SettingsViewModel
@@ -20,7 +23,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settingsViewModel: SettingsViewModel = hiltViewModel()
             val settingsState by settingsViewModel.state.collectAsState()
-            EchoTheme(primaryColorArgb = settingsState.settings.primaryColorArgb) { EchoNavGraph() }
+            EchoTheme(
+                primaryColorArgb = settingsState.settings.primaryColorArgb,
+                themeMode = settingsState.settings.themeMode,
+            ) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    EchoNavGraph()
+                }
+            }
         }
     }
 }

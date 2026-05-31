@@ -2,6 +2,7 @@ package com.echo.musicplayer.ui.navigation
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
@@ -39,7 +40,6 @@ import com.echo.musicplayer.ui.screens.SearchScreen
 import com.echo.musicplayer.ui.screens.SettingsScreen
 import com.echo.musicplayer.ui.screens.SongOptionsScreen
 import com.echo.musicplayer.ui.screens.StorageScreen
-import com.echo.musicplayer.ui.screens.UploadScreen
 
 private data class MainTab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
@@ -56,23 +56,24 @@ fun EchoNavGraph() {
     val viewModel: EchoAppViewModel = hiltViewModel()
     val state by viewModel.state.collectAsState()
 
-    NavHost(navController = navController, startDestination = "library") {
+    NavHost(
+        navController = navController,
+        startDestination = "library",
+        modifier = Modifier.fillMaxSize(),
+    ) {
         composable("library") {
-            MainScaffold(navController, "library") { padding ->
+            MainScaffold(navController, "library", state, viewModel::togglePlayPause) { padding ->
                 LibraryScreen(
                     state = state,
                     contentPadding = padding,
                     onSearch = { navController.navigate("search") },
-                    onUpload = { navController.navigate("upload") },
                     onSongClick = viewModel::play,
                     onMore = { navController.navigate("songOptions/${it.id}") },
-                    onNowPlaying = { navController.navigate("nowPlaying") },
-                    onTogglePlayback = viewModel::togglePlayPause,
                 )
             }
         }
         composable("downloads") {
-            MainScaffold(navController, "downloads") { padding ->
+            MainScaffold(navController, "downloads", state, viewModel::togglePlayPause) { padding ->
                 DownloadsScreen(
                     state = state,
                     contentPadding = padding,
@@ -82,31 +83,27 @@ fun EchoNavGraph() {
                         viewModel.downloadAll()
                         navController.navigate("downloadAll")
                     },
-                    onNowPlaying = { navController.navigate("nowPlaying") },
-                    onTogglePlayback = viewModel::togglePlayPause,
                 )
             }
         }
         composable("favorites") {
-            MainScaffold(navController, "favorites") { padding ->
+            MainScaffold(navController, "favorites", state, viewModel::togglePlayPause) { padding ->
                 FavoritesScreen(
                     state = state,
                     contentPadding = padding,
                     onSearch = { navController.navigate("search") },
                     onSongClick = viewModel::play,
                     onFavorite = viewModel::toggleFavorite,
-                    onNowPlaying = { navController.navigate("nowPlaying") },
-                    onTogglePlayback = viewModel::togglePlayPause,
                 )
             }
         }
         composable("settings") {
-            MainScaffold(navController, "settings") { padding ->
+            MainScaffold(navController, "settings", state, viewModel::togglePlayPause) { padding ->
                 SettingsScreen(
                     state = state,
                     contentPadding = padding,
                     onColor = viewModel::setPrimaryColor,
-                    onWifi = viewModel::setDownloadOverWifiOnly,
+                    onThemeMode = viewModel::setThemeMode,
                     onKeepScreen = viewModel::setKeepScreenOnWhilePlaying,
                     onStorage = { navController.navigate("storage") },
                     onAbout = { navController.navigate("about") },
@@ -132,13 +129,6 @@ fun EchoNavGraph() {
                 onFavorite = { state.playback.currentSong?.let(viewModel::toggleFavorite) },
                 onDownload = { state.playback.currentSong?.let(viewModel::download) },
                 onQueue = { navController.navigate("queue") },
-            )
-        }
-        composable("upload") {
-            UploadScreen(
-                state = state,
-                onBack = navController::popBackStack,
-                onUpload = viewModel::uploadSampleSong,
             )
         }
         composable("queue") {
@@ -176,10 +166,22 @@ fun EchoNavGraph() {
             SongOptionsScreen(
                 song = song,
                 onBack = navController::popBackStack,
-                onPlayNext = { song?.let(viewModel::play) },
-                onFavorite = { song?.let(viewModel::toggleFavorite) },
-                onDownload = { song?.let(viewModel::download) },
-                onDeleteDownload = { song?.let(viewModel::deleteDownload) },
+                onPlayNext = {
+                    song?.let(viewModel::play)
+                    navController.popBackStack()
+                },
+                onFavorite = {
+                    song?.let(viewModel::toggleFavorite)
+                    navController.popBackStack()
+                },
+                onDownload = {
+                    song?.let(viewModel::download)
+                    navController.popBackStack()
+                },
+                onDeleteDownload = {
+                    song?.let(viewModel::deleteDownload)
+                    navController.popBackStack()
+                },
             )
         }
     }
@@ -189,21 +191,22 @@ fun EchoNavGraph() {
 private fun MainScaffold(
     navController: NavHostController,
     selectedRoute: String,
+    state: com.echo.musicplayer.ui.app.EchoAppUiState,
+    onTogglePlayPause: () -> Unit,
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    val viewModel: EchoAppViewModel = hiltViewModel()
-    val state by viewModel.state.collectAsState()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: selectedRoute
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             Column {
                 MiniPlayer(
                     playback = state.playback,
                     onOpen = { navController.navigate("nowPlaying") },
-                    onToggle = viewModel::togglePlayPause,
+                    onToggle = onTogglePlayPause,
                 )
                 NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
                     mainTabs.forEach { tab ->

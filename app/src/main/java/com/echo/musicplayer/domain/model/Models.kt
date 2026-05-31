@@ -6,10 +6,9 @@ data class Song(
     val artist: String,
     val album: String,
     val durationMs: Long,
-    val storagePath: String,
+    val audioUrl: String,
     val fileName: String,
     val sizeBytes: Long,
-    val uploadedAt: Long,
     val updatedAt: Long,
     val fileHash: String,
     val coverArtUri: String? = null,
@@ -17,26 +16,20 @@ data class Song(
     val isFavorite: Boolean = false,
     val downloadStatus: DownloadStatus = DownloadStatus.NotDownloaded,
     val downloadProgress: Float = 0f,
+    val downloadFailureReason: String? = null,
 )
 
-enum class DownloadStatus { NotDownloaded, Queued, Downloading, Downloaded, Failed }
+enum class DownloadStatus { NotDownloaded, Queued, Downloading, Downloaded, Failed, Cancelled }
 
-data class SongMetadataDraft(
-    val sourceUri: String,
-    val title: String,
-    val artist: String,
-    val album: String,
-    val durationMs: Long,
-    val fileSizeBytes: Long,
-    val fileName: String,
-    val coverArtUri: String? = null,
-)
+enum class LibraryStatus { Idle, CheckingFirestore, Synced, Empty, OfflineUsingCache, Failed }
 
 data class AppSettings(
     val primaryColorArgb: Long = 0xFFB45CFF,
-    val downloadOverWifiOnly: Boolean = true,
+    val themeMode: ThemeMode = ThemeMode.System,
     val keepScreenOnWhilePlaying: Boolean = true,
 )
+
+enum class ThemeMode { Light, Dark, System }
 
 data class PlaybackState(
     val currentSong: Song? = null,

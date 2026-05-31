@@ -10,9 +10,9 @@ import javax.inject.Singleton
 
 @Singleton
 class InMemoryStore @Inject constructor() {
-    val songs = MutableStateFlow(SampleSongs.songs)
+    val songs = MutableStateFlow(emptyList<Song>())
     val settings = MutableStateFlow(AppSettings())
-    val playback = MutableStateFlow(PlaybackState(queue = SampleSongs.songs))
+    val playback = MutableStateFlow(PlaybackState())
     val storageUsage = MutableStateFlow(StorageUsage(downloadedBytes = 10_120_000_000, cacheBytes = 1_320_000_000))
 
     fun updateSong(songId: String, transform: (Song) -> Song) {

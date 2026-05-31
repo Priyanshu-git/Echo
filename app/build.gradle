@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -75,7 +76,7 @@ dependencies {
 
     implementation libs.androidx.work.runtime.ktx
     implementation libs.androidx.hilt.work
-    kapt libs.hilt.compiler
+    kapt libs.androidx.hilt.compiler
 
     implementation libs.androidx.media3.exoplayer
     implementation libs.androidx.media3.session
@@ -83,7 +84,6 @@ dependencies {
 
     implementation platform(libs.firebase.bom)
     implementation libs.firebase.firestore
-    implementation libs.firebase.storage
 
     implementation libs.kotlinx.coroutines.android
 

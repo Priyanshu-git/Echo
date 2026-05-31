@@ -3,6 +3,7 @@ package com.echo.musicplayer.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.echo.musicplayer.domain.model.AppSettings
+import com.echo.musicplayer.domain.model.ThemeMode
 import com.echo.musicplayer.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,8 +29,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setPrimaryColor(argb) }
     }
 
-    fun setDownloadOverWifiOnly(enabled: Boolean) {
-        viewModelScope.launch { settingsRepository.setDownloadOverWifiOnly(enabled) }
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     }
 
     fun setKeepScreenOnWhilePlaying(enabled: Boolean) {

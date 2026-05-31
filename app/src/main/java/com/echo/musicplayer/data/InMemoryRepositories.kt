@@ -2,21 +2,21 @@ package com.echo.musicplayer.data
 
 import com.echo.musicplayer.domain.model.AppSettings
 import com.echo.musicplayer.domain.model.DownloadStatus
+import com.echo.musicplayer.domain.model.LibraryStatus
 import com.echo.musicplayer.domain.model.PlaybackState
 import com.echo.musicplayer.domain.model.Song
-import com.echo.musicplayer.domain.model.SongMetadataDraft
 import com.echo.musicplayer.domain.model.StorageUsage
+import com.echo.musicplayer.domain.model.ThemeMode
 import com.echo.musicplayer.domain.repository.DownloadRepository
 import com.echo.musicplayer.domain.repository.FavoritesRepository
 import com.echo.musicplayer.domain.repository.MusicLibraryRepository
 import com.echo.musicplayer.domain.repository.PlaybackController
 import com.echo.musicplayer.domain.repository.SettingsRepository
 import com.echo.musicplayer.domain.repository.StorageRepository
-import com.echo.musicplayer.domain.repository.UploadRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,53 +25,9 @@ class InMemoryMusicLibraryRepository @Inject constructor(
     private val store: InMemoryStore,
 ) : MusicLibraryRepository {
     override val songs: Flow<List<Song>> = store.songs
+    override val status: Flow<LibraryStatus> = flowOf(LibraryStatus.Synced)
     override suspend fun refresh() = Unit
     override suspend fun findByHash(fileHash: String): Song? = store.songs.value.firstOrNull { it.fileHash == fileHash }
-}
-
-@Singleton
-class InMemoryUploadRepository @Inject constructor(
-    private val store: InMemoryStore,
-) : UploadRepository {
-    override suspend fun prepareDraft(sourceUri: String): SongMetadataDraft = SongMetadataDraft(
-        sourceUri = sourceUri,
-        title = "New Song",
-        artist = "Unknown Artist",
-        album = "Single",
-        durationMs = 194_000,
-        fileSizeBytes = 5_200_000,
-        fileName = "New Song.mp3",
-    )
-
-    override fun validateDraft(draft: SongMetadataDraft): List<String> = buildList {
-        if (draft.title.isBlank()) add("Title is required")
-        if (draft.artist.isBlank()) add("Artist is required")
-        if (draft.album.isBlank()) add("Album is required")
-        if (!draft.fileName.endsWith(".mp3", ignoreCase = true)) add("Only MP3 files are supported")
-    }
-
-    override suspend fun upload(draft: SongMetadataDraft, onProgress: (Float) -> Unit): Result<Song> {
-        repeat(5) { index ->
-            delay(80)
-            onProgress((index + 1) / 5f)
-        }
-        val hash = "hash-${UUID.randomUUID()}"
-        val song = Song(
-            id = hash,
-            title = draft.title,
-            artist = draft.artist,
-            album = draft.album,
-            durationMs = draft.durationMs,
-            storagePath = "songs/$hash.mp3",
-            fileName = draft.fileName,
-            sizeBytes = draft.fileSizeBytes,
-            uploadedAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis(),
-            fileHash = hash,
-        )
-        store.songs.value = store.songs.value + song
-        return Result.success(song)
-    }
 }
 
 @Singleton
@@ -96,7 +52,7 @@ class InMemoryDownloadRepository @Inject constructor(
     override suspend fun download(song: Song) {
         store.updateSong(song.id) { it.copy(downloadStatus = DownloadStatus.Downloading, downloadProgress = 0.2f) }
         delay(150)
-        store.updateSong(song.id) { it.copy(downloadStatus = DownloadStatus.Downloaded, downloadProgress = 1f, localPath = "offline/${song.fileName}") }
+        store.updateSong(song.id) { it.copy(downloadStatus = DownloadStatus.Downloaded, downloadProgress = 1f, localPath = "offline/${song.fileName}", downloadFailureReason = null) }
     }
 
     override suspend fun downloadAll(songs: List<Song>, onProgress: (completed: Int, total: Int) -> Unit) {
@@ -110,7 +66,7 @@ class InMemoryDownloadRepository @Inject constructor(
     override suspend fun cancelAll() {
         store.songs.value = store.songs.value.map { song ->
             if (song.downloadStatus == DownloadStatus.Downloading || song.downloadStatus == DownloadStatus.Queued) {
-                song.copy(downloadStatus = DownloadStatus.NotDownloaded, downloadProgress = 0f)
+                song.copy(downloadStatus = DownloadStatus.Cancelled, downloadProgress = 0f, downloadFailureReason = "Cancelled")
             } else {
                 song
             }
@@ -118,7 +74,7 @@ class InMemoryDownloadRepository @Inject constructor(
     }
 
     override suspend fun delete(song: Song) {
-        store.updateSong(song.id) { it.copy(downloadStatus = DownloadStatus.NotDownloaded, downloadProgress = 0f, localPath = null) }
+        store.updateSong(song.id) { it.copy(downloadStatus = DownloadStatus.NotDownloaded, downloadProgress = 0f, localPath = null, downloadFailureReason = null) }
     }
 }
 
@@ -132,8 +88,8 @@ class InMemorySettingsRepository @Inject constructor(
         store.settings.value = store.settings.value.copy(primaryColorArgb = argb)
     }
 
-    override suspend fun setDownloadOverWifiOnly(enabled: Boolean) {
-        store.settings.value = store.settings.value.copy(downloadOverWifiOnly = enabled)
+    override suspend fun setThemeMode(mode: ThemeMode) {
+        store.settings.value = store.settings.value.copy(themeMode = mode)
     }
 
     override suspend fun setKeepScreenOnWhilePlaying(enabled: Boolean) {
@@ -150,7 +106,7 @@ class InMemoryStorageRepository @Inject constructor(
     override suspend fun clearDownloads() {
         store.storageUsage.value = store.storageUsage.value.copy(downloadedBytes = 0)
         store.songs.value = store.songs.value.map {
-            it.copy(downloadStatus = DownloadStatus.NotDownloaded, downloadProgress = 0f, localPath = null)
+            it.copy(downloadStatus = DownloadStatus.NotDownloaded, downloadProgress = 0f, localPath = null, downloadFailureReason = null)
         }
     }
 

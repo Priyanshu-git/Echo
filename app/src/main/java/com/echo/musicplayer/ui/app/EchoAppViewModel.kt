@@ -4,16 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.echo.musicplayer.domain.model.AppSettings
 import com.echo.musicplayer.domain.model.DownloadStatus
+import com.echo.musicplayer.domain.model.LibraryStatus
 import com.echo.musicplayer.domain.model.PlaybackState
 import com.echo.musicplayer.domain.model.Song
 import com.echo.musicplayer.domain.model.StorageUsage
+import com.echo.musicplayer.domain.model.ThemeMode
 import com.echo.musicplayer.domain.repository.DownloadRepository
 import com.echo.musicplayer.domain.repository.FavoritesRepository
 import com.echo.musicplayer.domain.repository.MusicLibraryRepository
 import com.echo.musicplayer.domain.repository.PlaybackController
 import com.echo.musicplayer.domain.repository.SettingsRepository
 import com.echo.musicplayer.domain.repository.StorageRepository
-import com.echo.musicplayer.domain.repository.UploadRepository
 import com.echo.musicplayer.domain.usecase.SearchSongsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,9 +30,9 @@ data class EchoAppUiState(
     val playback: PlaybackState = PlaybackState(),
     val settings: AppSettings = AppSettings(),
     val storageUsage: StorageUsage = StorageUsage(),
+    val libraryStatus: LibraryStatus = LibraryStatus.Idle,
     val searchQuery: String = "",
-    val downloadAllProgress: Float = 0f,
-    val uploadProgress: Float = 0f,
+    val batchDownloadIds: Set<String> = emptySet(),
 ) {
     val filteredSongs: List<Song>
         get() = songs
@@ -44,6 +45,24 @@ data class EchoAppUiState(
 
     val downloading: List<Song>
         get() = songs.filter { it.downloadStatus == DownloadStatus.Downloading || it.downloadStatus == DownloadStatus.Queued }
+
+    val failedDownloads: List<Song>
+        get() = songs.filter { it.downloadStatus == DownloadStatus.Failed }
+
+    val batchSongs: List<Song>
+        get() = songs.filter { it.id in batchDownloadIds }
+
+    val batchCompletedCount: Int
+        get() = batchSongs.count { it.downloadStatus == DownloadStatus.Downloaded || it.downloadStatus == DownloadStatus.Failed || it.downloadStatus == DownloadStatus.Cancelled }
+
+    val batchFailedCount: Int
+        get() = batchSongs.count { it.downloadStatus == DownloadStatus.Failed }
+
+    val downloadAllProgress: Float
+        get() = if (batchDownloadIds.isEmpty()) 0f else batchCompletedCount / batchDownloadIds.size.toFloat()
+
+    val totalLibraryBytes: Long
+        get() = songs.sumOf { it.sizeBytes.coerceAtLeast(0L) }
 }
 
 private data class EchoBaseState(
@@ -51,12 +70,12 @@ private data class EchoBaseState(
     val playback: PlaybackState,
     val settings: AppSettings,
     val storageUsage: StorageUsage,
+    val libraryStatus: LibraryStatus,
 )
 
 @HiltViewModel
 class EchoAppViewModel @Inject constructor(
-    libraryRepository: MusicLibraryRepository,
-    private val uploadRepository: UploadRepository,
+    private val libraryRepository: MusicLibraryRepository,
     private val favoritesRepository: FavoritesRepository,
     private val downloadRepository: DownloadRepository,
     private val settingsRepository: SettingsRepository,
@@ -65,34 +84,37 @@ class EchoAppViewModel @Inject constructor(
     private val searchSongs: SearchSongsUseCase,
 ) : ViewModel() {
     private val query = MutableStateFlow("")
-    private val downloadAllProgress = MutableStateFlow(0f)
-    private val uploadProgress = MutableStateFlow(0f)
+    private val batchDownloadIds = MutableStateFlow(emptySet<String>())
 
     private val baseState = combine(
         libraryRepository.songs,
+        libraryRepository.status,
         playbackController.state,
         settingsRepository.settings,
         storageRepository.usage,
-    ) { songs, playback, settings, storage ->
-        EchoBaseState(songs, playback, settings, storage)
+    ) { songs, libraryStatus, playback, settings, storage ->
+        EchoBaseState(songs, playback, settings, storage, libraryStatus)
     }
 
     val state: StateFlow<EchoAppUiState> = combine(
         baseState,
         query,
-        downloadAllProgress,
-        uploadProgress,
-    ) { base, searchQuery, batchProgress, upload ->
+        batchDownloadIds,
+    ) { base, searchQuery, batchIds ->
         EchoAppUiState(
             songs = searchSongs(base.songs, searchQuery),
             playback = base.playback,
             settings = base.settings,
             storageUsage = base.storageUsage,
+            libraryStatus = base.libraryStatus,
             searchQuery = searchQuery,
-            downloadAllProgress = batchProgress,
-            uploadProgress = upload,
+            batchDownloadIds = batchIds,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EchoAppUiState())
+
+    fun refreshLibrary() {
+        viewModelScope.launch { libraryRepository.refresh() }
+    }
 
     fun setSearchQuery(value: String) {
         query.value = value
@@ -133,15 +155,20 @@ class EchoAppViewModel @Inject constructor(
     fun downloadAll() {
         viewModelScope.launch {
             val songs = state.value.songs
-            downloadAllProgress.value = 0f
+            batchDownloadIds.value = songs.filterNot { it.downloadStatus == DownloadStatus.Downloaded }.map { it.id }.toSet()
             downloadRepository.downloadAll(songs) { completed, total ->
-                downloadAllProgress.value = if (total == 0) 1f else completed / total.toFloat()
+                if (total == 0 || completed == total) {
+                    batchDownloadIds.value = batchDownloadIds.value
+                }
             }
         }
     }
 
     fun cancelDownloads() {
-        viewModelScope.launch { downloadRepository.cancelAll() }
+        viewModelScope.launch {
+            downloadRepository.cancelAll()
+            batchDownloadIds.value = emptySet()
+        }
     }
 
     fun clearDownloads() {
@@ -156,8 +183,8 @@ class EchoAppViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setPrimaryColor(argb) }
     }
 
-    fun setDownloadOverWifiOnly(enabled: Boolean) {
-        viewModelScope.launch { settingsRepository.setDownloadOverWifiOnly(enabled) }
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     }
 
     fun setKeepScreenOnWhilePlaying(enabled: Boolean) {
@@ -176,10 +203,4 @@ class EchoAppViewModel @Inject constructor(
         viewModelScope.launch { playbackController.clearQueue() }
     }
 
-    fun uploadSampleSong() {
-        viewModelScope.launch {
-            val draft = uploadRepository.prepareDraft("content://sample/new-song.mp3")
-            uploadRepository.upload(draft) { uploadProgress.value = it }
-        }
-    }
 }

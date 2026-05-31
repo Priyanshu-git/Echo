@@ -1,6 +1,8 @@
 package com.echo.musicplayer.ui.components
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,13 +12,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
@@ -31,12 +33,17 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.echo.musicplayer.core.util.formatDuration
@@ -61,27 +68,41 @@ fun Artwork(
             .background(Brush.linearGradient(colors)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = Icons.Filled.MusicNote,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.86f),
-            modifier = Modifier.size(28.dp),
-        )
+        val cover = remember(song?.coverArtUri) {
+            song?.coverArtUri?.let { BitmapFactory.decodeFile(it) }?.asImageBitmap()
+        }
+        if (cover != null) {
+            Image(
+                bitmap = cover,
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.MusicNote,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.86f),
+                modifier = Modifier.size(28.dp),
+            )
+        }
     }
 }
 
 @Composable
 fun SongRow(
     song: Song,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
     onFavoriteClick: (() -> Unit)? = null,
     onMoreClick: (() -> Unit)? = null,
+    actionIcon: ImageVector = Icons.Filled.MoreVert,
     trailingMode: SongTrailingMode = SongTrailingMode.Duration,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .heightIn(min = 64.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -123,9 +144,53 @@ fun SongRow(
         }
         if (onMoreClick != null) {
             IconButton(onClick = onMoreClick) {
-                Icon(Icons.Filled.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(actionIcon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+@Composable
+fun EmptyState(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    body: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp, vertical = 44.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(34.dp),
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = body,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -140,7 +205,7 @@ private fun DownloadStatusIcon(song: Song) {
         )
 
         DownloadStatus.Downloading, DownloadStatus.Queued -> Text(
-            text = "${(song.downloadProgress * 100).toInt()}%",
+            text = if (song.downloadStatus == DownloadStatus.Queued) "Queued" else "${(song.downloadProgress * 100).toInt()}%",
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.labelSmall,
         )
@@ -151,11 +216,16 @@ private fun DownloadStatusIcon(song: Song) {
             style = MaterialTheme.typography.labelSmall,
         )
 
-        DownloadStatus.NotDownloaded -> Icon(
-            Icons.Filled.Download,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
+        DownloadStatus.Cancelled -> Text(
+            text = "Cancelled",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+        )
+
+        DownloadStatus.NotDownloaded -> Text(
+            text = "Ready",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
         )
     }
 }
@@ -185,7 +255,13 @@ fun MiniPlayer(
             Artwork(song = song, modifier = Modifier.size(42.dp))
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = song.title,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             IconButton(onClick = onToggle) {
