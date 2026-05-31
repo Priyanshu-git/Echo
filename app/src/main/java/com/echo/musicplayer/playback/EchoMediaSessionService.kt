@@ -11,4 +11,9 @@ class EchoMediaSessionService : MediaSessionService() {
     lateinit var sessionHolder: PlaybackSessionHolder
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = sessionHolder.mediaSession
+
+    override fun onDestroy() {
+        sessionHolder.release()
+        super.onDestroy()
+    }
 }

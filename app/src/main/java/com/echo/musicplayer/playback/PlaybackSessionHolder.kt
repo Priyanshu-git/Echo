@@ -1,9 +1,6 @@
 package com.echo.musicplayer.playback
 
 import android.content.Context
-import android.net.Uri
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -18,7 +15,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,11 +22,14 @@ import javax.inject.Singleton
 class PlaybackSessionHolder @Inject constructor(
     @ApplicationContext context: Context,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val job = SupervisorJob()
+    private val scope = CoroutineScope(job + Dispatchers.Main.immediate)
     private var queue: List<Song> = emptyList()
 
     val player: ExoPlayer = ExoPlayer.Builder(context).build()
     val mediaSession: MediaSession = MediaSession.Builder(context, player).build()
+    val currentQueue: List<Song>
+        get() = queue
 
     private val _state = MutableStateFlow(PlaybackState())
     val state: StateFlow<PlaybackState> = _state
@@ -54,9 +53,14 @@ class PlaybackSessionHolder @Inject constructor(
     fun play(song: Song, songs: List<Song>) {
         queue = songs.ifEmpty { listOf(song) }
         val startIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-        player.setMediaItems(queue.map(::mediaItem), startIndex, 0L)
+        player.setMediaItems(queue.map { it.toMediaItem() }, startIndex, 0L)
         player.prepare()
         player.play()
+        publishState()
+    }
+
+    fun setQueue(songs: List<Song>) {
+        queue = songs
         publishState()
     }
 
@@ -114,7 +118,7 @@ class PlaybackSessionHolder @Inject constructor(
     private fun resetQueueKeeping(songId: String?) {
         val index = queue.indexOfFirst { it.id == songId }.coerceAtLeast(0)
         val position = player.currentPosition
-        player.setMediaItems(queue.map(::mediaItem), index, position)
+        player.setMediaItems(queue.map { it.toMediaItem() }, index, position)
         player.prepare()
         publishState()
     }
@@ -130,23 +134,9 @@ class PlaybackSessionHolder @Inject constructor(
 
     private fun currentSong(): Song? = queue.getOrNull(player.currentMediaItemIndex)
 
-    private fun mediaItem(song: Song): MediaItem {
-        val uri = song.localPath?.toPlaybackUri() ?: Uri.parse(song.audioUrl)
-        return MediaItem.Builder()
-            .setUri(uri)
-            .setMediaId(song.id)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(song.title)
-                    .setArtist(song.artist)
-                    .setAlbumTitle(song.album)
-                    .build(),
-            )
-            .build()
-    }
-
-    private fun String.toPlaybackUri(): Uri = when {
-        startsWith("asset://") || startsWith("content://") || startsWith("file://") -> Uri.parse(this)
-        else -> Uri.fromFile(File(this))
+    fun release() {
+        job.cancel()
+        mediaSession.release()
+        player.release()
     }
 }
