@@ -23,6 +23,8 @@ enum class DownloadStatus { NotDownloaded, Queued, Downloading, Downloaded, Fail
 
 enum class LibraryStatus { Idle, CheckingFirestore, Synced, Empty, OfflineUsingCache, Failed }
 
+enum class ConnectivityStatus { Online, Offline }
+
 data class AppSettings(
     val primaryColorArgb: Long = 0xFFB45CFF,
     val themeMode: ThemeMode = ThemeMode.System,

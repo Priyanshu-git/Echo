@@ -97,6 +97,8 @@ fun SongRow(
     onMoreClick: (() -> Unit)? = null,
     actionIcon: ImageVector = Icons.Filled.MoreVert,
     trailingMode: SongTrailingMode = SongTrailingMode.Duration,
+    isCurrentSong: Boolean = false,
+    isPlaying: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -123,6 +125,14 @@ fun SongRow(
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (isCurrentSong) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(end = 8.dp).size(18.dp),
             )
         }
         when (trailingMode) {
@@ -223,7 +233,7 @@ private fun DownloadStatusIcon(song: Song) {
         )
 
         DownloadStatus.NotDownloaded -> Text(
-            text = "Ready",
+            text = "Tap to download",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
         )

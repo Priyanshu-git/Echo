@@ -3,12 +3,14 @@ package com.echo.musicplayer.ui.app
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.echo.musicplayer.domain.model.AppSettings
+import com.echo.musicplayer.domain.model.ConnectivityStatus
 import com.echo.musicplayer.domain.model.DownloadStatus
 import com.echo.musicplayer.domain.model.LibraryStatus
 import com.echo.musicplayer.domain.model.PlaybackState
 import com.echo.musicplayer.domain.model.Song
 import com.echo.musicplayer.domain.model.StorageUsage
 import com.echo.musicplayer.domain.model.ThemeMode
+import com.echo.musicplayer.domain.repository.ConnectivityRepository
 import com.echo.musicplayer.domain.repository.DownloadRepository
 import com.echo.musicplayer.domain.repository.FavoritesRepository
 import com.echo.musicplayer.domain.repository.MusicLibraryRepository
@@ -21,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -33,9 +36,20 @@ data class EchoAppUiState(
     val libraryStatus: LibraryStatus = LibraryStatus.Idle,
     val searchQuery: String = "",
     val batchDownloadIds: Set<String> = emptySet(),
+    val isNetworkOnline: Boolean = true,
+    val isOfflineMode: Boolean = false,
 ) {
     val filteredSongs: List<Song>
         get() = songs
+
+    val availableOfflineSongs: List<Song>
+        get() = songs.filter { it.downloadStatus == DownloadStatus.Downloaded && !it.localPath.isNullOrBlank() }
+
+    val visibleLibrarySongs: List<Song>
+        get() = if (isOfflineMode) availableOfflineSongs else songs
+
+    val hasOnlineResumeAvailable: Boolean
+        get() = isOfflineMode && isNetworkOnline
 
     val favorites: List<Song>
         get() = songs.filter { it.isFavorite }
@@ -71,6 +85,14 @@ private data class EchoBaseState(
     val settings: AppSettings,
     val storageUsage: StorageUsage,
     val libraryStatus: LibraryStatus,
+    val connectivityStatus: ConnectivityStatus,
+)
+
+private data class EchoLibraryState(
+    val songs: List<Song>,
+    val playback: PlaybackState,
+    val settings: AppSettings,
+    val libraryStatus: LibraryStatus,
 )
 
 @HiltViewModel
@@ -81,26 +103,43 @@ class EchoAppViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val storageRepository: StorageRepository,
     private val playbackController: PlaybackController,
+    private val connectivityRepository: ConnectivityRepository,
     private val searchSongs: SearchSongsUseCase,
 ) : ViewModel() {
     private val query = MutableStateFlow("")
     private val batchDownloadIds = MutableStateFlow(emptySet<String>())
+    private val isOfflineMode = MutableStateFlow(false)
 
-    private val baseState = combine(
+    private val libraryState = combine(
         libraryRepository.songs,
         libraryRepository.status,
         playbackController.state,
         settingsRepository.settings,
+    ) { songs, libraryStatus, playback, settings ->
+        EchoLibraryState(songs, playback, settings, libraryStatus)
+    }
+
+    private val baseState = combine(
+        libraryState,
         storageRepository.usage,
-    ) { songs, libraryStatus, playback, settings, storage ->
-        EchoBaseState(songs, playback, settings, storage, libraryStatus)
+        connectivityRepository.status,
+    ) { library, storage, connectivityStatus ->
+        EchoBaseState(
+            songs = library.songs,
+            playback = library.playback,
+            settings = library.settings,
+            storageUsage = storage,
+            libraryStatus = library.libraryStatus,
+            connectivityStatus = connectivityStatus,
+        )
     }
 
     val state: StateFlow<EchoAppUiState> = combine(
         baseState,
         query,
         batchDownloadIds,
-    ) { base, searchQuery, batchIds ->
+        isOfflineMode,
+    ) { base, searchQuery, batchIds, offlineMode ->
         EchoAppUiState(
             songs = searchSongs(base.songs, searchQuery),
             playback = base.playback,
@@ -109,8 +148,20 @@ class EchoAppViewModel @Inject constructor(
             libraryStatus = base.libraryStatus,
             searchQuery = searchQuery,
             batchDownloadIds = batchIds,
+            isNetworkOnline = base.connectivityStatus == ConnectivityStatus.Online,
+            isOfflineMode = offlineMode,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EchoAppUiState())
+
+    init {
+        viewModelScope.launch {
+            connectivityRepository.status.collectLatest { status ->
+                if (status == ConnectivityStatus.Offline) {
+                    isOfflineMode.value = true
+                }
+            }
+        }
+    }
 
     fun refreshLibrary() {
         viewModelScope.launch { libraryRepository.refresh() }
@@ -122,6 +173,17 @@ class EchoAppViewModel @Inject constructor(
 
     fun play(song: Song) {
         viewModelScope.launch { playbackController.play(song, state.value.songs) }
+    }
+
+    fun playFromLibrary(song: Song) {
+        viewModelScope.launch { playbackController.play(song, state.value.visibleLibrarySongs) }
+    }
+
+    fun goOnline() {
+        viewModelScope.launch {
+            isOfflineMode.value = false
+            libraryRepository.refresh()
+        }
     }
 
     fun togglePlayPause() {

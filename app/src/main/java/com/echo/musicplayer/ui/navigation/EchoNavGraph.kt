@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Settings
@@ -30,7 +29,6 @@ import androidx.navigation.navArgument
 import com.echo.musicplayer.ui.app.EchoAppViewModel
 import com.echo.musicplayer.ui.components.MiniPlayer
 import com.echo.musicplayer.ui.screens.AboutScreen
-import com.echo.musicplayer.ui.screens.DownloadAllScreen
 import com.echo.musicplayer.ui.screens.DownloadsScreen
 import com.echo.musicplayer.ui.screens.FavoritesScreen
 import com.echo.musicplayer.ui.screens.LibraryScreen
@@ -45,7 +43,6 @@ private data class MainTab(val route: String, val label: String, val icon: andro
 
 private val mainTabs = listOf(
     MainTab("library", "Library", Icons.Filled.LibraryMusic),
-    MainTab("downloads", "Downloads", Icons.Filled.Download),
     MainTab("favorites", "Favorites", Icons.Filled.Favorite),
     MainTab("settings", "Settings", Icons.Filled.Settings),
 )
@@ -66,9 +63,11 @@ fun EchoNavGraph() {
                 LibraryScreen(
                     state = state,
                     contentPadding = padding,
+                    onDownloads = { navController.navigate("downloads") },
                     onSearch = { navController.navigate("search") },
-                    onSongClick = viewModel::play,
+                    onSongClick = viewModel::playFromLibrary,
                     onMore = { navController.navigate("songOptions/${it.id}") },
+                    onGoOnline = viewModel::goOnline,
                 )
             }
         }
@@ -79,10 +78,7 @@ fun EchoNavGraph() {
                     contentPadding = padding,
                     onSearch = { navController.navigate("search") },
                     onDownload = viewModel::download,
-                    onDownloadAll = {
-                        viewModel.downloadAll()
-                        navController.navigate("downloadAll")
-                    },
+                    onDownloadAll = viewModel::downloadAll,
                 )
             }
         }
@@ -150,13 +146,6 @@ fun EchoNavGraph() {
         }
         composable("about") {
             AboutScreen(onBack = navController::popBackStack)
-        }
-        composable("downloadAll") {
-            DownloadAllScreen(
-                state = state,
-                onBack = navController::popBackStack,
-                onCancel = viewModel::cancelDownloads,
-            )
         }
         composable(
             route = "songOptions/{songId}",

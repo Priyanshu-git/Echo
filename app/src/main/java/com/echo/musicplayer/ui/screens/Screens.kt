@@ -40,7 +40,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -84,10 +83,13 @@ import com.echo.musicplayer.ui.components.SongTrailingMode
 fun LibraryScreen(
     state: EchoAppUiState,
     contentPadding: PaddingValues,
+    onDownloads: () -> Unit,
     onSearch: () -> Unit,
     onSongClick: (Song) -> Unit,
     onMore: (Song) -> Unit,
+    onGoOnline: () -> Unit,
 ) {
+    val librarySongs = state.visibleLibrarySongs
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(contentPadding),
         contentPadding = PaddingValues(bottom = 12.dp),
@@ -95,36 +97,77 @@ fun LibraryScreen(
         item {
             ScreenHeader(
                 title = "Library",
-                actions = { IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, contentDescription = null) } },
+                actions = {
+                    IconButton(onClick = onDownloads) { Icon(Icons.Filled.Download, contentDescription = null) }
+                    IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, contentDescription = null) }
+                },
             )
-            LibraryStatusBanner(state.libraryStatus, state.songs.isNotEmpty())
+            if (state.isOfflineMode) {
+                OfflineModeBanner(
+                    canGoOnline = state.hasOnlineResumeAvailable,
+                    onGoOnline = onGoOnline,
+                )
+            } else {
+                LibraryStatusBanner(state.libraryStatus, state.songs.isNotEmpty())
+            }
         }
-        if (state.songs.isEmpty()) {
+        if (librarySongs.isEmpty()) {
             item {
                 EmptyState(
-                    icon = Icons.Filled.MusicNote,
-                    title = when (state.libraryStatus) {
-                        LibraryStatus.CheckingFirestore -> "Checking Firestore"
-                        LibraryStatus.Empty -> "No songs found in Firestore"
-                        LibraryStatus.Failed -> "Could not reach Firestore"
+                    icon = if (state.isOfflineMode) Icons.Filled.Download else Icons.Filled.MusicNote,
+                    title = when {
+                        state.isOfflineMode -> "No downloaded songs"
+                        state.libraryStatus == LibraryStatus.CheckingFirestore -> "Checking Firestore"
+                        state.libraryStatus == LibraryStatus.Empty -> "No songs found in Firestore"
+                        state.libraryStatus == LibraryStatus.Failed -> "Could not reach Firestore"
                         else -> "No songs yet"
                     },
-                    body = when (state.libraryStatus) {
-                        LibraryStatus.CheckingFirestore -> "Your shared library is being synced."
-                        LibraryStatus.Empty -> "Add song metadata to Firestore to populate your private library."
-                        LibraryStatus.Failed -> "Check your connection or Firestore configuration, then try again."
+                    body = when {
+                        state.isOfflineMode -> "Downloaded songs will appear here while offline."
+                        state.libraryStatus == LibraryStatus.CheckingFirestore -> "Your shared library is being synced."
+                        state.libraryStatus == LibraryStatus.Empty -> "Add song metadata to Firestore to populate your private library."
+                        state.libraryStatus == LibraryStatus.Failed -> "Check your connection or Firestore configuration, then try again."
                         else -> "Add song metadata to Firestore to populate your private library."
                     },
                 )
             }
         } else {
-            items(state.songs, key = { it.id }) { song ->
+            items(librarySongs, key = { it.id }) { song ->
                 SongRow(
                     song = song,
                     onClick = { onSongClick(song) },
                     onMoreClick = { onMore(song) },
                     trailingMode = SongTrailingMode.Duration,
+                    isCurrentSong = song.id == state.playback.currentSong?.id,
+                    isPlaying = state.playback.isPlaying,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfflineModeBanner(
+    canGoOnline: Boolean,
+    onGoOnline: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (canGoOnline) {
+                "Internet restored. Stay offline or go online."
+            } else {
+                "Offline mode: showing downloaded songs only."
+            },
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.secondary,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        if (canGoOnline) {
+            Button(onClick = onGoOnline, shape = RoundedCornerShape(8.dp)) {
+                Text("Go online")
             }
         }
     }
@@ -190,24 +233,7 @@ fun DownloadsScreen(
                 }
             }
         }
-        if (visibleSongs.isEmpty()) {
-            item {
-                EmptyState(
-                    icon = Icons.Filled.Download,
-                    title = "Nothing to download",
-                    body = "Songs from your library will appear here with their current download status.",
-                )
-            }
-        } else {
-            items(visibleSongs, key = { it.id }) { song ->
-                SongRow(
-                    song = song,
-                    onClick = { onDownload(song) },
-                    trailingMode = SongTrailingMode.Download,
-                )
-            }
-        }
-        if (state.songs.isNotEmpty()) {
+        if (selectedFilter == DownloadFilter.All && state.songs.isNotEmpty()) {
             item {
                 Button(
                     onClick = onDownloadAll,
@@ -223,6 +249,23 @@ fun DownloadsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+        if (visibleSongs.isEmpty()) {
+            item {
+                EmptyState(
+                    icon = Icons.Filled.Download,
+                    title = "Nothing to download",
+                    body = "Songs from your library will appear here with their current download status.",
+                )
+            }
+        } else {
+            items(visibleSongs, key = { it.id }) { song ->
+                SongRow(
+                    song = song,
+                    onClick = { onDownload(song) },
+                    trailingMode = SongTrailingMode.Download,
                 )
             }
         }
@@ -470,57 +513,6 @@ fun SongOptionsScreen(
                     OptionRow(Icons.Filled.Delete, "Remove Download", onDeleteDownload, isDanger = true)
                 }
                 OptionRow(Icons.Filled.Clear, "Cancel", onBack)
-            }
-        }
-    }
-}
-
-@Composable
-fun DownloadAllScreen(
-    state: EchoAppUiState,
-    onBack: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
-        item {
-            ScreenHeader(
-                title = "Download All",
-                leading = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) } },
-            )
-            Box(Modifier.fillMaxWidth().padding(top = 24.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(
-                    progress = { state.downloadAllProgress.coerceIn(0f, 1f) },
-                    modifier = Modifier.size(156.dp),
-                    strokeWidth = 8.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${(state.downloadAllProgress * 100).toInt()}%", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                    Text("${formatBytes(state.storageUsage.downloadedBytes)} / ${formatBytes(state.totalLibraryBytes)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
-                }
-            }
-            Text(
-                text = if (state.batchDownloadIds.isEmpty()) {
-                    "No active batch download"
-                } else {
-                    "Downloading ${state.batchCompletedCount} of ${state.batchDownloadIds.size} songs; ${state.batchFailedCount} failed"
-                },
-                modifier = Modifier.fillMaxWidth().padding(18.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
-        items(state.batchSongs.ifEmpty { state.downloading }.take(8), key = { it.id }) { song ->
-            SongRow(song = song, trailingMode = SongTrailingMode.Download)
-        }
-        item {
-            OutlinedButton(
-                onClick = onCancel,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                Text("Cancel")
             }
         }
     }

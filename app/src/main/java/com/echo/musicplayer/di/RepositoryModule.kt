@@ -1,10 +1,12 @@
 package com.echo.musicplayer.di
 
+import com.echo.musicplayer.data.connectivity.AndroidConnectivityRepository
 import com.echo.musicplayer.data.local.LocalDownloadRepository
 import com.echo.musicplayer.data.local.LocalStorageRepository
 import com.echo.musicplayer.data.local.RoomFavoritesRepository
 import com.echo.musicplayer.data.remote.FirestoreMusicLibraryRepository
 import com.echo.musicplayer.data.settings.DataStoreSettingsRepository
+import com.echo.musicplayer.domain.repository.ConnectivityRepository
 import com.echo.musicplayer.domain.repository.DownloadRepository
 import com.echo.musicplayer.domain.repository.FavoritesRepository
 import com.echo.musicplayer.domain.repository.MusicLibraryRepository
@@ -44,4 +46,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindPlaybackController(controller: Media3PlaybackController): PlaybackController
+
+    @Binds
+    @Singleton
+    abstract fun bindConnectivityRepository(repository: AndroidConnectivityRepository): ConnectivityRepository
 }
