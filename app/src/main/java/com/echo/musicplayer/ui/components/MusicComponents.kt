@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.echo.musicplayer.core.util.formatDuration
 import com.echo.musicplayer.domain.model.DownloadStatus
 import com.echo.musicplayer.domain.model.PlaybackState
@@ -74,6 +75,13 @@ fun Artwork(
         if (cover != null) {
             Image(
                 bitmap = cover,
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else if (!song?.coverArtUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = song.coverArtUrl,
                 contentDescription = null,
                 modifier = Modifier.matchParentSize(),
                 contentScale = ContentScale.Crop,

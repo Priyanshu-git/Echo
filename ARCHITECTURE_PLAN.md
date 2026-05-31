@@ -44,6 +44,7 @@ Required shared metadata:
   "album": "",
   "durationMs": 0,
   "audioUrl": "",
+  "coverArtUrl": "",
   "fileName": "",
   "sizeBytes": 0,
   "updatedAt": "",
@@ -51,7 +52,7 @@ Required shared metadata:
 }
 ```
 
-Do not store `storagePath`, upload state, favorites, download status, progress, local paths, GitHub credentials, release ids, or asset ids in Firestore.
+Do not store `storagePath`, upload state, favorites, download status, progress, local paths, local cover art paths, GitHub credentials, release ids, or asset ids in Firestore.
 
 ## Repository Design
 

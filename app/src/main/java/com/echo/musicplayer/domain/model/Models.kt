@@ -11,6 +11,7 @@ data class Song(
     val sizeBytes: Long,
     val updatedAt: Long,
     val fileHash: String,
+    val coverArtUrl: String? = null,
     val coverArtUri: String? = null,
     val localPath: String? = null,
     val isFavorite: Boolean = false,

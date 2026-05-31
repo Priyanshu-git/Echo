@@ -17,6 +17,7 @@ MP3 upload from the app is intentionally not supported. MP3 files are uploaded m
   "album": "",
   "durationMs": 0,
   "audioUrl": "",
+  "coverArtUrl": "",
   "fileName": "",
   "sizeBytes": 0,
   "updatedAt": "",

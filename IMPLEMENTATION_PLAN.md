@@ -24,6 +24,7 @@ In-app MP3 upload is removed. Firebase Storage is not part of the implementation
   "album": "",
   "durationMs": 0,
   "audioUrl": "",
+  "coverArtUrl": "",
   "fileName": "",
   "sizeBytes": 0,
   "updatedAt": "",

@@ -88,6 +88,9 @@ class FirestoreMusicLibraryRepository @Inject constructor(
             sizeBytes = getLong("sizeBytes") ?: 0L,
             updatedAt = get("updatedAt").toEpochMillis(),
             fileHash = fileHash,
+            coverArtUrl = getString("coverArtUrl")
+                ?.trim()
+                ?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
             coverArtUri = local?.coverArtUri,
             localPath = local?.localPath,
             isFavorite = local?.isFavorite ?: false,
